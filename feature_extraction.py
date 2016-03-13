@@ -264,6 +264,8 @@ def find_words(instring, prefix = '', words = None):
                       reverse = True)[0]
     else:
         raise ValueError('no solution')
+
+#change the code to first look for textblolb word spelling correction and if doesn't work then call the find_words method
         
 def converting_other_hashtags_into_words(tweet):
     list_of_all_hashtags=multiple_hashtag_deletion(tweet,"#")[1]
@@ -283,7 +285,7 @@ def converting_other_hashtags_into_words(tweet):
         list_of_words=find_words(i)
         #print tweet
         print list_of_words
-        cur_word_str=" ".join(j for j in list_of_words)
+        cur_word_str=" ".join(j for j in list_of_words if len(j)!=1)
         #there might be more than 1 hashtags and hence we store only the hashtag that is the longest since it has the most information
         if len(ls)==0:
            ls.append(cur_word_str)

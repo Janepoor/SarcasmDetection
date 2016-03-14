@@ -18,15 +18,15 @@ import gensim
 add_data1_regular=[]
 add_data1_sarcasm=[]
 add_data2=[]
-with open(r"D:/IE Project/additional_sarcasm_data/twitDB_regular.txt","r") as f:
+with open(r"additional_sarcasm_data/twitDB_regular.txt","r") as f:
     for j in f.readlines():
         add_data1_regular.append(j[:-15])
         
-with open(r"D:/IE Project/additional_sarcasm_data/twitDB_sarcasm.txt","r") as f:
+with open(r"additional_sarcasm_data/twitDB_sarcasm.txt","r") as f:
     for j in f.readlines():
         add_data1_sarcasm.append(j[:-12])
         
-with open(r"D:/IE Project/additional_sarcasm_data/pfs_tweets.txt","r") as f:
+with open(r"additional_sarcasm_data/pfs_tweets.txt","r") as f:
     for j in f.readlines():
         add_data2.append(j[:-1])
 

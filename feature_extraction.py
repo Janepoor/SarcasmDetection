@@ -11,17 +11,19 @@ import nltk
 import re
 import scipy.spatial.distance as ds_metric
 from textblob import TextBlob
+from textblob import Word
 from sklearn.feature_extraction.text import TfidfVectorizer
 import gensim as gs
 
-
-full_data=pd.read_csv(r"D:/IE Project/sarcasm-data-3000.tsv",delimiter="\t",header=None)
+"""
+full_data=pd.read_csv(r"E:/Sarcasm data/sarcasm-data-3000.tsv",delimiter="\t",header=None)
 
 words = set()
-with open(r'D:\IE Project\full_words.txt') as f:
+with open(r'full_words.txt') as f:
     for line in f:
         words.add(line.strip())
 solutions = {}
+"""
 #feature1 : question_mark presence
 #feature2 : Presence of hastags other than #sarcasm tag
 #feature3 : presence of Http
@@ -34,10 +36,11 @@ solutions = {}
 #for finding winking emoticons "match" if re.match('^(:\'\(|:\'\))+$',":')") else "no"
 #for finding smileys and other emoticons "match" if re.match('^(:\(|:\))+$',":)") else "no"
 
-emoticon_dict={":')":"wink",":)":"happy",":(":"sad",":-)":"happy",":-(":"sad",":-P":"playfulness",":P":"playfullness",":/":"criticism",":-/":"criticism",":D":"laughter",":-D":"laughter",";-)":"cheekiness",";)":"cheekiness"}
-tweets_data=list(full_data[2])
+#emoticon_dict={":')":"wink",":)":"happy",":(":"sad",":-)":"happy",":-(":"sad",":-P":"playfulness",":P":"playfullness",":/":"criticism",":-/":"criticism",":D":"laughter",":-D":"laughter",";-)":"cheekiness",";)":"cheekiness"}
+#tweets_data=list(full_data[2])
 
 def multiple_hashtag_deletion(sentence,hashtag):
+    #print sentence
     sentence=sentence+" "
     lower_sent=sentence.lower()
     c=lower_sent.count(hashtag)
@@ -58,7 +61,7 @@ def data_cleaning(data):
         ls.append(multiple_hashtag_deletion(i,"#sarcasm")[0])
     return ls     
     
-tweets_after_sarcasm2=data_cleaning(tweets_data)            
+#tweets_after_sarcasm2=data_cleaning(tweets_data)            
 
 def feature_1_to_6(data):
     ls=[]
@@ -113,37 +116,53 @@ def optimal_split(sentence,values_list):
     sentence=re.sub(r'(\W)(?=\1)','',sentence)
     #total_len=0
     #print sentence
-    max_score=-1
-    dct={}
-    
+    max_score=10000
+    best_op="nothing"
     #print values_list
     if len(values_list)==0:
         return TextBlob(sentence).sentences
     for i in values_list:
+        #cur_excluding_list=[j for j in values_list if j!=i]
+        #cur_sentence_wo_excluding_values=" ".join(k for k in sentence.split(i) if k not in cur_excluding_list)
         ls=sentence.split(i)
+        for j in ls:
+            for k in j:
+                if k in values_list:
+                    j.replace(k,"")
+        #print sentence
+        #print ls            
         score=split_criterion(sentence,ls)
         #print score
-        if score>max_score:
+        if score<max_score:
             max_score=score
-            dct["opt"]=ls
-    #print dct["opt"]        
-    return [TextBlob(i).sentences[0] for i in dct["opt"]]        
-        
+            best_op=i
+    #print best_op    
+    #print [TextBlob(i).sentences[0] for i in dct["opt"]]        
+    return sentence.split(best_op)        
+
+
+#change the split criterion metric coz it's not working for some examples like
+#optimal_split("This is a test and we ! are fine",["!","and"])
+#0.666666666667
+#0.5
+#[Sentence("This is a test and we "), Sentence(" are fine")]    
+
 def split_criterion(sen,proposed_split):
     assert isinstance(sen,str),"Looks like a string is not passed as the first argument to the function that scores the split proposed"
     assert isinstance(proposed_split,list),"Looks like a list is not passed as the proposed split to the function split criterion" 
     criterion_score=0
-    #total_len=len(sen.split())    
+    num_parts=len(proposed_split)
+    #total_len=len(sen.split())
+    len_proposed_split=0    
+    for i in proposed_split:
+        len_proposed_split+=len(i.split())
     for i in proposed_split:
         if len(i.split())==0:
            x=1
         else:
-           x=len(i.split())
-        criterion_score+=1.0/x
-    if criterion_score>1:
-        return 0
-    else:
-        return criterion_score     
+           x=len([k for k in i.split() if k!="" or k!=" "])
+        criterion_score+=abs(1.0/num_parts-x/float(len_proposed_split))
+    return criterion_score     
         
 def sentence_split(sentence):
     ops=["!",":",";",".","and"]
@@ -169,6 +188,8 @@ def polarity_subj_and_shifts(tweet,other_hashtags_bool):
     tb_tweet=TextBlob(tweet)
     p=tb_tweet.polarity
     s=tb_tweet.subjectivity
+    #print p
+    #print s
     if other_hashtags_bool!=1:   
        tweet_parts=sentence_split(tweet)
        #print "here"
@@ -179,19 +200,28 @@ def polarity_subj_and_shifts(tweet,other_hashtags_bool):
            temp_ls=[]
            tb_tweet_part=i
            #print tb_tweet_part
+           if isinstance(tb_tweet_part,str):
+               tb_tweet_part=TextBlob(tb_tweet_part)
            pol=tb_tweet_part.polarity
            sub=tb_tweet_part.subjectivity
+           #print pol
+           #print sub
            temp_ls.append(pol)
            temp_ls.append(sub)
            shifts_ls.append(temp_ls)
-       pd_df=pd.DataFrame(shifts_ls,index=None) 
+       pd_df=pd.DataFrame(shifts_ls,index=None)
+       #print pd_df.columns
+       #print pd_df
+       shifts_ls=[]
        for i in pd_df.columns:
            cur_col=list(pd_df[i])
+           #print cur_col
            temp_sum=0.0
            for j in range(len(cur_col)):
               if j+1<len(cur_col):
                   temp_sum+=ds_metric.euclidean(cur_col[j],cur_col[j+1])
            shifts_ls.append(temp_sum)        
+       #sprint p,s,shifts_ls[0],shifts_ls[1]    
        return p,s,shifts_ls[0],shifts_ls[1]
     elif other_hashtags_bool==1:
          return p,s
@@ -234,7 +264,7 @@ def find_words(instring, prefix = '', words = None):
         return []
     if words is None:
         words = set()
-        with open(r'D:\IE Project\full_words.txt') as f:
+        with open(r'full_words.txt') as f:
             for line in f:
                 words.add(line.strip())
     if (not prefix) and (instring in words):
@@ -269,23 +299,24 @@ def find_words(instring, prefix = '', words = None):
         
 def converting_other_hashtags_into_words(tweet):
     list_of_all_hashtags=multiple_hashtag_deletion(tweet,"#")[1]
-    #print list_of_all_hashtags
-    #list_of_all_hashtags_wo_hash_symbol=[i[1:] for i in list_of_all_hashtags]
-    #list_of_hashtags_lower=[i.lower() for i in list_of_all_hashtags_wo_hash_symbol]
-    #list_of_hashtags_wo_sarcasm=[i for i in list_of_hashtags_lower if i!="sarcasm"]
     list_of_hashtags_wo_hashsym_sarcasm_and_are_in_lower=[i[1:].lower() for i in list_of_all_hashtags if i[1:].lower()!="sarcasm"]
     ls=[]
-    print list_of_hashtags_wo_hashsym_sarcasm_and_are_in_lower
+    #print list_of_hashtags_wo_hashsym_sarcasm_and_are_in_lower
     for i in range(len(list_of_hashtags_wo_hashsym_sarcasm_and_are_in_lower)):
-        if list_of_hashtags_wo_hashsym_sarcasm_and_are_in_lower[i][-1]==".":
+        if list_of_hashtags_wo_hashsym_sarcasm_and_are_in_lower[i]!="" and list_of_hashtags_wo_hashsym_sarcasm_and_are_in_lower[i][-1]==".":
             list_of_hashtags_wo_hashsym_sarcasm_and_are_in_lower[i]=list_of_hashtags_wo_hashsym_sarcasm_and_are_in_lower[i][:-1]  
-            
+
     for i in list_of_hashtags_wo_hashsym_sarcasm_and_are_in_lower:
         solutions = {}
         list_of_words=find_words(i)
         #print tweet
-        print list_of_words
+        tb_spellcheck=Word(i).spellcheck()
+        if tb_spellcheck[0][1]==1.0:
+            list_of_words=[]
+            list_of_words.append(tb_spellcheck[0][0])
+        #print list_of_words
         cur_word_str=" ".join(j for j in list_of_words if len(j)!=1)
+        #print cur_word_str
         #there might be more than 1 hashtags and hence we store only the hashtag that is the longest since it has the most information
         if len(ls)==0:
            ls.append(cur_word_str)
@@ -312,7 +343,11 @@ def senti_sim_comp_bw_tweet_and_rest_hashtags(tweet,polarity,subj):
     
 def feature_7_to_12(data):
     ls=[]
+    c=0
     for i in data:
+        c=c+1
+        if c%100==0:
+            print "in feature 7 to 12 currently data point "+str(c)
         temp_ls=[]
         temp_ls.append(len(sentence_split(i)))
         i_wo_hashtags=multiple_hashtag_deletion(i,"#")[0]
@@ -326,20 +361,34 @@ def feature_7_to_12(data):
         temp_ls.append(sub_sim_score)
         ls.append(temp_ls)
     return ls
-    
+
+def emoticons_feature(emoticons_list):
+    ls=[]
+    for i in emoticons_list:
+        s=""
+        for j in i:
+            s=s+j+"_"
+        ls.append(s[:-1])    
+    #print ls
+    res_df=pd.get_dummies(ls)    
+    return res_df
+        
     
 if __name__=="__main__":
-    full_data=pd.read_csv(r"D:/IE Project/sarcasm-data-3000.tsv",delimiter="\t",header=None)
+    full_data=pd.read_csv(r"E:/Sarcasm data/sarcasm-data-3000.tsv",delimiter="\t",header=None)
+    print "here"
     words = set() 
-    with open(r'D:\IE Project\full_words.txt') as f:
+    with open(r'full_words.txt') as f:
         for line in f:
             words.add(line.strip())
+    #words.add('allergies')        
     solutions = {}
     emoticon_dict={":')":"wink",":)":"happy",":(":"sad",":-)":"happy",":-(":"sad",":-P":"playfulness",":P":"playfullness",":/":"criticism",":-/":"criticism",":D":"laughter",":-D":"laughter",";-)":"cheekiness",";)":"cheekiness"}
     tweets_data=list(full_data[2])
     tweets_after_sarcasm2=data_cleaning(tweets_data)
     fvs_1_6,emoticons_data=feature_1_to_6(tweets_after_sarcasm2)
     df_1_to_6=pd.DataFrame(fvs_1_6)
+    print "after feature 1 to 6"
     fvs_7_12=feature_7_to_12(tweets_after_sarcasm2)
     
 

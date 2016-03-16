@@ -9,21 +9,21 @@ import pandas as pd
 import numpy as np
 import nltk
 import re
+import urllib
+import json
 import scipy.spatial.distance as ds_metric
-from textblob import TextBlob
-from textblob import Word
+from textblob import TextBlob,Word
 from sklearn.feature_extraction.text import TfidfVectorizer
 import gensim as gs
 
-"""
-full_data=pd.read_csv(r"E:/Sarcasm data/sarcasm-data-3000.tsv",delimiter="\t",header=None)
+
+full_data=pd.read_csv(r"D:/IE Project/sarcasm-data-3000.tsv",delimiter="\t",header=None)
 
 words = set()
-with open(r'full_words.txt') as f:
+with open(r'D:\IE Project\full_words.txt') as f:
     for line in f:
         words.add(line.strip())
 solutions = {}
-"""
 #feature1 : question_mark presence
 #feature2 : Presence of hastags other than #sarcasm tag
 #feature3 : presence of Http
@@ -36,11 +36,10 @@ solutions = {}
 #for finding winking emoticons "match" if re.match('^(:\'\(|:\'\))+$',":')") else "no"
 #for finding smileys and other emoticons "match" if re.match('^(:\(|:\))+$',":)") else "no"
 
-#emoticon_dict={":')":"wink",":)":"happy",":(":"sad",":-)":"happy",":-(":"sad",":-P":"playfulness",":P":"playfullness",":/":"criticism",":-/":"criticism",":D":"laughter",":-D":"laughter",";-)":"cheekiness",";)":"cheekiness"}
-#tweets_data=list(full_data[2])
+emoticon_dict={":')":"wink",":)":"happy",":(":"sad",":-)":"happy",":-(":"sad",":-P":"playfulness",":P":"playfullness",":/":"criticism",":-/":"criticism",":D":"laughter",":-D":"laughter",";-)":"cheekiness",";)":"cheekiness"}
+tweets_data=list(full_data[2])
 
 def multiple_hashtag_deletion(sentence,hashtag):
-    #print sentence
     sentence=sentence+" "
     lower_sent=sentence.lower()
     c=lower_sent.count(hashtag)
@@ -61,7 +60,7 @@ def data_cleaning(data):
         ls.append(multiple_hashtag_deletion(i,"#sarcasm")[0])
     return ls     
     
-#tweets_after_sarcasm2=data_cleaning(tweets_data)            
+tweets_after_sarcasm2=data_cleaning(tweets_data)            
 
 def feature_1_to_6(data):
     ls=[]
@@ -111,6 +110,47 @@ def sentiments_features(data):
 
 #to do find : occurences in time and date and don't do split if they are there
 
+def word_replacement(each_tweet,model_for_simcomp,wiki_words):
+    other_hashtags_words=converting_other_hashtags_into_words(each_tweet).split()
+    words_in_tweet_wo_hashtag_info=each_tweet.split()
+    words_in_tweet=words_in_tweet_wo_hashtag_info+other_hashtags_words
+    #words_in_tweet_not_in_wiki=[i for i in words_in_the_tweet if i not in wiki_words]
+    ls_of_corrected_words=[]
+    for i in words_in_tweet:
+       if i in wiki_words:
+           ls_of_corrected_words.append(i)
+       else:    
+           query = i
+           list_spellchecks=Word(query).spellcheck()
+           most_possible_word=list_spellchecks[0]
+           if most_possible_word[1]!=0:
+              ls_of_corrected_words.append(most_possible_word[0])
+           else:   
+              url = 'http://api.urbandictionary.com/v0/define?term=%s' % (query)
+              response = urllib.urlopen(url)
+              data = json.loads(response.read())
+              definition = data['tags']
+              if len(definition)!=0:
+                 ls_of_corrected_words.append(best_match_for_word(query,definition,model_for_simcomp))
+              else:
+                 ls_of_corrected_words.append(query)
+                 
+    return " ".join([i for i in ls_of_corrected_words])          
+
+def best_match_for_word(actual_word,list_of_words_returned_by_urbandictionary_api,model_to_compare_similarity):
+    our_word=actual_word
+    list_comp=list_of_words_returned_by_urbandictionary_api
+    cur_model=model_to_compare_similarity        
+    max_sim=0.0
+    optimal_word=""
+    for i in list_comp:
+        if i in cur_model.vocab():
+            cur_sim=cur_model.similarity(i,our_word)
+            if cur_sim>max_sim:
+                max_sim=cur_sim
+                optimal_word=i
+    return optimal_word            
+    
 def optimal_split(sentence,values_list):
     #print values_list
     sentence=re.sub(r'(\W)(?=\1)','',sentence)
@@ -259,12 +299,13 @@ def find_words(instring):
     #print best_solution
     return best_solution
 """
+
 def find_words(instring, prefix = '', words = None):
     if not instring:
         return []
     if words is None:
         words = set()
-        with open(r'full_words.txt') as f:
+        with open(r'D:\IE Project\full_words.txt') as f:
             for line in f:
                 words.add(line.strip())
     if (not prefix) and (instring in words):
@@ -295,8 +336,6 @@ def find_words(instring, prefix = '', words = None):
     else:
         raise ValueError('no solution')
 
-#change the code to first look for textblolb word spelling correction and if doesn't work then call the find_words method
-        
 def converting_other_hashtags_into_words(tweet):
     list_of_all_hashtags=multiple_hashtag_deletion(tweet,"#")[1]
     list_of_hashtags_wo_hashsym_sarcasm_and_are_in_lower=[i[1:].lower() for i in list_of_all_hashtags if i[1:].lower()!="sarcasm"]
@@ -362,7 +401,7 @@ def feature_7_to_12(data):
         ls.append(temp_ls)
     return ls
 
-def emoticons_feature(emoticons_list):
+def emoticons_feature_one_hot_encoding(emoticons_list):
     ls=[]
     for i in emoticons_list:
         s=""
@@ -372,23 +411,32 @@ def emoticons_feature(emoticons_list):
     #print ls
     res_df=pd.get_dummies(ls)    
     return res_df
-        
+       
+def emoticon_extraction_with_re(tweets_file):
+    ls=[]
+    for i in tweets_file:
+        temp_ls=[]
+        x=re.findall(r"(?::|:'|;|=)(?:-)?(?:\)|\(|D|P)",i)
+        y=re.findall(r"(?:\)|\(|:'|;|=)(?:-)?(?::|;|D|P)",i)
+        for j in x:
+            temp_ls.append(j)
+        for j in y:
+            temp_ls.append(j)
+        ls.append(temp_ls)
+    return ls        
     
 if __name__=="__main__":
-    full_data=pd.read_csv(r"E:/Sarcasm data/sarcasm-data-3000.tsv",delimiter="\t",header=None)
-    print "here"
+    full_data=pd.read_csv(r"D:/IE Project/sarcasm-data-3000.tsv",delimiter="\t",header=None)
     words = set() 
-    with open(r'full_words.txt') as f:
+    with open(r'D:\IE Project\full_words.txt') as f:
         for line in f:
             words.add(line.strip())
-    #words.add('allergies')        
     solutions = {}
     emoticon_dict={":')":"wink",":)":"happy",":(":"sad",":-)":"happy",":-(":"sad",":-P":"playfulness",":P":"playfullness",":/":"criticism",":-/":"criticism",":D":"laughter",":-D":"laughter",";-)":"cheekiness",";)":"cheekiness"}
     tweets_data=list(full_data[2])
     tweets_after_sarcasm2=data_cleaning(tweets_data)
     fvs_1_6,emoticons_data=feature_1_to_6(tweets_after_sarcasm2)
     df_1_to_6=pd.DataFrame(fvs_1_6)
-    print "after feature 1 to 6"
     fvs_7_12=feature_7_to_12(tweets_after_sarcasm2)
     
 
